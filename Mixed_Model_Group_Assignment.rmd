@@ -1,0 +1,1658 @@
+---
+title: "Mixed_Models_Assignment_Final"
+author: "Pelagia Kalpakidou, Myriana Miltiadous, Gesa F Neubauer"
+date: "2023-03-19"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(geepack)
+library(nlme)
+library(lme4)
+library(dplyr)
+library(corrplot)
+library(nlmeU)
+library(lattice)
+library(gplots)
+library(GLMMadaptive)
+library(lmerTest)
+library(multcomp)
+```
+
+```{r, include=FALSE}
+qol3 <- read.csv("C:/Users/myria/OneDrive/Υπολογιστής/Mixed Models/Assignment/QOL-3.csv")
+
+
+#Transformation of data
+
+qol3$Treatn=ifelse(qol3$Treat==0,'observed','chemotherapy')
+
+for(i in 1:length(qol3$Time)){
+  if(qol3$Time[i]==1){
+    qol3$Months[i]=1
+  }
+  else if(qol3$Time[i]==2){
+    qol3$Months[i]=3
+    }
+  else if(qol3$Time[i]==3){
+    qol3$Months[i]=6
+    }
+   else if(qol3$Time[i]==4){
+      qol3$Months[i]=12
+      }
+}
+
+data0=qol3[qol3$Treat==0,]
+data1=qol3[qol3$Treat==1,]
+```
+
+
+#  Study Description
+
+The simulated data set considered in this assignment concerns a longitudinal 
+study, in which the goal is to investigate the potential benefIt of adjuvant chemotherapy after neoadjuvant (chemo-radiotherapy) and curative resection for 
+rectal cancer. The potential beneft is evaluated in terms of improving the 
+quality of life of patients measured via the EORTC-C30 questionnaires and the 
+presence of complaints in at most two of the items of the symptoms/side effects
+scale.
+In this study 226 patients with histologically proven stage II or III rectal 
+cancer were assigned to adjuvant chemotherapy or observation after preoperative (chemo)radiotherapy and surgery. All patients were invited to all in quality of 
+life questionnaires at 1, 3, 6 and 12 months post-surgery.
+A complication in this study is that not all planned measurements have been 
+recorded for several reasons e.g., loss to follow-up, relocation, side-effects, 
+etc.
+
+In this assignment we set two main research question and we fitted two models for each of them.
+
+# Data file
+
+* QOL.csv
+* Variables
+* ID: patient indicator.
+* Time: Visit number i.e., 1-4.
+* Score: Quality of Life score at each of the 4 visits.
+* Treat: Treatment allocation (0: observation, 1: adjuvant chemotherapy).
+* Treatn: "observed" for Treat = 0, "chemotherapy" for Treat = 1.
+* Age: Age at inclusion in the study.
+* Complaints: Presence of complaints in more than 2 items (0: no, 1: yes).
+* Months: Month of visit after the surgery i.e. 1, 3, 6, 12.
+
+Note:
+We made a transformation to our data and instead of using the covariate 
+Time we used Months=1,3,6,12. We did that since the months do not have the same 
+period gaps. So, we used our time variable as continuous to have more valid 
+results.
+
+Note:
+Age and ID are the baseline characteristics and
+Time, Score, Treat and Complaints are the time varying covariates.
+
+# Missing data
+
+As it is written in the study description, there are incomplete data for some participants. Indeed in the data set, we can find subjects with less than 4 measurements over time and the reason for that lost measurements differs for 
+each of them. So starting our analysis with unbalanced data begets concerns 
+about their consideration. Missigness is a factor that needs to be taken into consideration as has an influence on the efficiency of our predictions 
+(potential bias) and the fitting of the models we are about to use in this 
+assignment.
+
+Our analysis consists of the four parts mentioned bellow:
+1. Multivariate model
+2. Linear mixed-effects model
+3. GEE approach
+4. Mixed-effects logistic regression
+
+Each of them has its own assumptions regarding missing data under which its 
+results are valid. In general there are three mechanisms that generate the 
+missing data. 
+1. Missing Completely At Random (MCAR)
+e.g.:Patients lost to follow up because of relocation
+2. Missing At Random (MAR)
+e.g.:study protocol requires patients whose response value exceeds a threshold 
+to be removed from the study.
+3. Missing Not At Random (MNAR)
+e.g. :In longitudinal studies for quality-of-life, patients may fail to complete
+the questionnaire at occasions when their quality-of-life is compromised.
+
+Under MCAR all the the aforementioned statistical procedures give valid results 
+and we do not need to worry if this is the case.
+Under MAR, only GEE approach is biased and in order to derive unbiased estimates 
+Weighted GEE is used but this is something that is beyond the scopes of this 
+report.
+Under MNAR the results of all the methods we used are not valid and we need
+to consider defining a model for the joint distribution of the longitudinal
+outcome. For that there are different approaches that make assumptions about 
+the missing data but this is not something we will discuss further. Finally,
+sensitivity analysis is also usually recommended.
+
+In conclusion, missing data are not under the control of the investigator and 
+that is why they are not often understood properly and assumptions for
+them need to be made in order to proceed with the statistical analysis.
+It is recommended that analysis must be done with methods that are valid under 
+MAR and that is also what we assumed.
+
+Regarding Multiple Imputation, this has been the way for many year to account 
+for the uncertainty introduced from imputing the missing observations and
+to be sure that results are valid under MAR. However, nowadays mixed models 
+fitted by the software are more flexible and valid under MAR. And since in our 
+study we do not have missing data in covariates it will possibly not be 
+necessary. Maybe only in combination with GEE-->MI-GEE approach but this will 
+not be discussed further.
+
+Finally we checked that 179/226 observations have measurements for all the
+months which we considered as a good percentage.  
+
+```{r, include = FALSE}
+sum(as.vector(table(qol3$ID))==4)
+```
+
+# 1 Quality of Life score
+
+The first thing we checked for our analysis was the Score response variable and 
+how it is associated with the other covariates .
+
+## Visualisation
+
+Note that we have to be very careful when extracting conclusions from the plots
+that follow, since we have missing data.
+
+Firstly we checked Score's summary statistics:
+
+```{r, echo = FALSE}
+summary(qol3$Score)
+
+```
+
+We then, did some spaghetti plots for the two treatment groups. From both of them
+we observe substantial variability from patient to patient. Score of some 
+patients tend to decrease in time, for some others increase and for
+some others remain relatively constant. The mean of all patients (blue line)
+though seems to increase.
+
+```{r, echo = FALSE}
+
+# Plot individual profiles
+
+xyplot(Score ~ Months | Treatn, groups = ID, data = qol3,
+       xlab = "Months", ylab = "Score",
+       panel = function(x, y) {
+            panel.xyplot(x, y, type = "l", col = 1)
+            panel.loess(x, y, horizontal = FALSE, col = "blue", lwd = 2)
+       })
+
+#xyplot(Score ~ Months | Treatn, data = qol3,
+       #xlab = "Months", ylab = "Score",
+       #panel = function(x, y) {
+            #panel.average(x, y, horizontal = FALSE, col = "blue")
+       #})
+
+```
+
+Next, we saw that the mean score of all the subjects increases with Time.
+The same holds also if we divide the data into the two treatment groups:
+Note: the missing data
+
+```{r, echo = FALSE}
+par(mfrow=c(1,3))
+plotmeans(Score ~ Months, data = qol3, main = 'Both Treatment Groups', text.n.label="")
+
+#MEAN
+#Note the missing observations
+
+armd. <- qol3
+
+plotmeans(Score ~ Months, data = armd., subset = which(armd.$Treat == 0), main = 'observation', text.n.label="")
+plotmeans(Score ~ Months, data = armd., subset = which(armd.$Treat == 1), main = 'adjuvant chemotherapy', text.n.label="")
+```
+
+
+And on the same graph:
+
+```{r, echo = FALSE}
+my_mean=aggregate(Score ~ Treat + Months, data = qol3, mean)
+ggplot2::ggplot(my_mean[my_mean$Treat %in% c(0,1),], 
+       aes(x = Months, y = Score, color = factor(Treat))) +
+  geom_line() +
+  labs(x = "Months", y = "Mean Score") +
+  scale_color_manual(values = c("blue", "red"), labels = c("Observed", "Adjuvant chemotherapy"))+
+  labs(color='Treatment group')
+``` 
+
+
+
+Regarding the variance for each Treatment group there is no specific trend over time
+as seen in the following table:
+
+```{r, echo = FALSE}
+#Mean Score per group for every visit
+#my_mean=aggregate(Score ~ Treat + Months, data = qol3, mean)
+
+my_var = aggregate(Score ~ Treat + Months, data = qol3, var)
+
+#my_mean
+my_var
+
+```
+
+Concerning the correlation of our variables we can see from the following 
+correlation plot that Score with complaints are strongly positively correlated 
+and also Time with Complaints are positively correlated
+The other correlations though, are close to 0.
+
+
+```{r, echo=FALSE}
+my_corr = cor(qol3[,-c(2,7)])
+#my_corr
+
+# Visualize correlation matrix
+corrplot(as.matrix(my_corr), method = "color", type = "upper",mar=c(1,1,1,1))
+```
+
+Before starting with our first model it is important to be mentioned that the Score 
+and the Months  variables are continuous and the Treat variable is categorical.
+As the dependent variable (Score) is continuous, we test our research question by two suitable approaches, the Linear Regression Model and the linear mixed-effects model.
+
+## 1.1 Multivariate model: Linear Regression Model
+We will firstly apply a multivariate analysis. This analysis is needed because we aim to evaluate the relationship of two main independent covariates (Months and Time) that may be related to the continuous outcome variable (Score). It is approporiate for the hierarchical structure with the repeated measurements over time within the individuals. It further allows us to include more covariates that might be confounding factors (Age). We will continue with the following model we need to answer our research questions. 
+
+###### Model description and Assumptions
+
+The model can be written as:
+
+Score = beta(0) + beta(1) * Months + beta(2) * Treat + beta(3) * Months * Treat + epsilon
+
+where Score is the continuous outcome variable (Quality of Life score), Months is the continuous predictor variable (Time), Treat is the categorical predictor variable (treatment group and control group), beta0 is the intercept, beta1, beta2, and beta3 are the coefficients of the predictor variables, and epsilon is the error term.
+
+The error terms are normally distributed with a mean of 0 and a unstructured covariance matrix Sigma: epsilon ~ N(0,Sigma). The error terms are assumed to be independent of the covariates (Months, Treat). 
+
+Regarding the applicable assumptions, we assume the outcome variable (Score) to have a normal distribution. Further, we assume a linear relationship between the expected response and the covariates The measurements of each patient are independent of each other but within are correlated. 
+
+We interpret the coefficients in the following. 
+beta0 represents the average QoL score at baseline (when Months and Treat are both zero).
+beta1 represents the change in QoL score per one-month increase in Months (when Treat is held constant).
+beta2 represents the difference in QoL score between the treatment groups (when Months is held constant).
+beta3 represents the change in the slope of QoL score over time between the treatment groups.
+
+When applying the model in R we are using the following adjustments. We viewed the correctional structure in the data. We are applying the default unstructured correlation structure for the within-subject correlation structure of the residuals to be symmetric and constant across the months. 
+We indicated that the weighting structure in the model variance of the outcome variable is not constant for each patient (ID) to allow for within-group heteroscedasticity in the our model. 
+
+We chose the REML estimation method for estimation of components of variance to get unbiased estimates of the fixed effects. We use REML instead of ML because REML reduces bias in ML estimates of covariance parameters. 
+
+### Finding the most Parsimonious Model
+
+Multiple Predictors
+Linear vs Quadratic Mean Structures:
+```{r, echo = FALSE}
+# Multiple Predictors
+# Linear vs Quadratic Mean Structures
+
+model.full <- gls(Score ~ Age + Treat + Months + Months * Treat,
+  correlation = corSymm(form = ~ 1 | ID),
+  weights = varIdent(~ 1 | ID),
+  na.action = na.exclude,
+  method = "REML",
+  data = qol3
+)
+
+summary(model.full)
+
+model.reduced<- gls(Score ~ Months,
+  correlation = corSymm(form = ~ 1 | ID),
+  weights = varIdent(~ 1 | ID),
+  na.action = na.exclude,
+  method = "REML",
+  data = qol3
+)
+
+
+model.quadr <- gls(Score ~ I(Months) + Treat*I(Months) + Treat*I(Months^2),
+  correlation = corSymm(form = ~ 1 | ID),
+  weights = varIdent(~ 1 | ID),
+  na.action = na.exclude,
+  method = "REML",
+  data = qol3
+)
+
+
+anova(model.full, model.reduced, model.quadr)
+
+
+```
+
+
+Different correlation structures:
+```{r, echo = FALSE}
+
+# Different correlation structures
+
+model.corsymm <- gls(Score ~ Months,
+  correlation = corSymm(form = ~ 1 | ID),
+  weights = varIdent(~ 1 | ID),
+  method = "REML",
+  data = qol3
+)
+
+model.compsymm <- gls(Score ~ Months,
+                 correlation = corCompSymm(form =  ~ Months | ID),
+                 weights = varIdent( ~ 1 | ID),
+                 data = qol3, method = "REML")
+
+model.ar1 <- gls(Score ~ Months,
+                 correlation = corAR1(form =  ~ Months | ID),
+                 weights = varIdent( ~ 1 | ID),
+                 data = qol3, method = "REML")
+
+model.arma <- gls(Score ~ Months,
+                 correlation = corARMA(form = ~ Months | ID, p = 1, q = 2),
+                 weights = varIdent( ~ 1 | ID),
+                 data = qol3, method = "REML")
+
+anova(model.corsymm, model.compsymm, model.ar1, model.arma)
+```
+
+We determined the most parsimonious mean structure by fitting our model with a linear and quadratic function. We found the linear mean structure to be the most parsimonious with an AIC value of 6170 (model.reduced).
+
+We tried to fit different models while only adjusting different covariance structures. We compared the models fit with the AIC Criterion because we used the REML method. We found the symmetric correlation structure (unstructured correlation matrix) to be the most parsimonious structure with a AIC of 6170.03. 
+
+After removing non significant predictors from the elaborate model which led to more efficient inferences for the mean parameters, we concluded the model with a linear mean structure, symmetric correctional structure and the single predictor time (in months) to be the most parsimonious multivariate model.
+
+
+```{r, echo=FALSE}
+
+model.unstr <- gls(Score ~ Months * Treat,
+  correlation = corSymm(form = ~ 1 | ID),
+  weights = varIdent(~ 1 | ID),
+  na.action = na.exclude,
+  method = "REML",
+  data = qol3
+)
+
+# Print model summary
+summary(model.unstr)$tTable
+
+
+# For a complete patient where ID 2 has all measurements
+getVarCov(model.unstr, individual = 2)
+# Corresponding correlation matrix
+cov2cor(getVarCov(model.unstr, individual = 2))
+
+```
+
+
+### 1.1.1
+
+After choosing our linear Regression model we wanted to address the research question of whether the assigned treatment have an effect on the mean progression of the quality of life Score. 
+
+We chose the unstructured mean model and we described the 
+correlations between the repeated measurements using unstructured 
+variance-covariance matrix. We did that, since when subjects are measured at the same 
+time point and for short follow up, as in our case, this is the most appealing
+model. We kept our model as parsimonious as possible with only the
+parameters we want to investigate and seemed to be correlated from our visual 
+analysis, because that can increase the power of our tests. 
+
+To answer our research question, we look at our models's coefficients related with the Treatment covariate and their associated p-values. We can observe that the coefficient of the interaction of Months and Treatments is non-significant with a p-value of 0.159 and neither is the coefficient of the treatment. This means there is no significant difference in their mean scores. In conclusion, the assigned treatment (adjuvant chemotherapy) does not show an effect on the patients mean progression of quality of life. Only the Months variable is statistically significant 
+which means that the mean Score is only significantly affected by the 
+Months and not by the Treatment group in which each patient belongs to.
+
+```{r echo=FALSE}
+model.unstr=gls(Score~Months*Treat,
+                corSymm(form=~1|ID),
+                weights=varIdent(~1|Months),
+                data=qol3,
+                method='REML')
+summary(model.unstr)$tTable
+
+```
+
+
+### 1.1.2
+
+Next we wanted to find out whether there is a difference in the quality of life 
+at six months after surgery after completion of adjuvant chemotherapy for 
+patients in the treatment group and find the corresponding 95% confidence 
+interval and p-value.
+
+We firstly compared Months=1 with Months=6 for Treat=1(i.e. adjuvant 
+chemotherapy). We computed analytically the difference in the mean score between
+the two months with the following calculations:
+
+For Months = 1 and Treat = 1 we have:
+Score = beta0 + beta1 * 1 + beta2 * 1 + beta3 * 1 * 1 + bi0
+
+And for Months = 6 and Treat = 1:
+Score = beta0 + beta1 * 6 + beta2 * 1 + beta3 * 6 * 1 + bi0
+
+if we subtract them we end up with:
+
+H0:  5 * beta1 + 5 * beta3 = 0 => beta1 + beta3 = 0 
+
+versus
+
+HA: beta1 + beta3 != 0 
+
+and that is the hypothesis we check to address the above mentioned question. 
+To do that we formed a contrast matrix (L=[0,1,0,1]) and use the limits that we know from 
+the literature. Then we also used Wald test to find the p-value.
+
+```{r, echo=FALSE}
+
+# We will compare Months=1 and Months=6 for Treat=1
+#Hypothesis testing: H0:beta1+beta3=0
+
+betas <- coef(model.unstr) # parameter estimates
+V <- vcov(model.unstr) # variance-covariance matrix of MLEs
+
+# we create an appropriate contrast matrix
+L <- t(as.matrix(c(0,1,0,1)))
+
+est <- c(L %*% betas) # estimated Score per group
+ses <- sqrt(diag(L %*% V %*% t(L))) # std errors
+
+# We store estimates in data.frame
+# and add limits of 95% CI using the 
+# normal approximation
+results <- data.frame(treat1compariosson = "beta1+beta3")
+results$est <- est
+results$low <- est - 1.96 * ses
+results$upp <- est + 1.96 * ses
+results
+
+
+#p value
+#Wald test
+library(aod)
+w.test1 <- wald.test(b = coef(model.unstr), 
+                    Sigma = vcov(model.unstr), 
+          L = rbind(c(0, 1, 0, 1)))
+#w.test1
+
+# F-test: "Thyroxin" group
+#anova(model.unstr, L = rbind(c(0, 1, 0, 1)))
+```
+
+95% confidence interval of beta1+beta3:[0.4346896, 0.7983765] does not contain the value zero.
+
+p-value: <0.0001 very close to zero so beta1+beta3 is 
+statistically significant and that further suggests that Score depends on Months
+
+For the difference between the two means we found a significant effect on quality of life after 6 months regarding the treatment group   (F = 44.16, p < .0001). Hence, we can conclude that there is a statistically significant difference in quality of life at six months after surgery for patients in the treatment group who completed adjuvant chemotherapy.
+
+We calculated the 95% confidence interval to show the range of likely values for the true difference in quality of life between the Month=1 and Month=6 (0.4346896, 0.7983765). Therefore, we can conclude that with a 95% level of confidence, the treatment group after 6 months had a significantly higher quality of life score compared to the first month.
+
+
+### 1.1.3
+
+To answer the third research question: "Is there a difference between the two groups at 12 months after surgery?" we are following a similar procedure as in b, by providing an analytical solution and performing a F-Test. We computed analytically the difference in the mean score in Month=12 between the two treatment groups and find out that we should check the hypothesis: H0:beta2+12*beta3=0 to answer our question. Similarly, to do that 
+we formed a contrast matrix(L=[0,0,1,12]) and used the limits that we know from the literature. For the difference between the two means we found a significant effect of the treatment group after 12 months on quality of life (F = 0.589, p < 0.4431) compared to the control group.
+Hence, we can conclude that there is a no statistically significant difference in quality of life at 12 months after surgery for patients in the treatment group who completed adjuvant chemotherapy and the group that was just observed. 
+
+We calculated the 95% confidence interval to show the range of likely values for the true difference in quality of life between the two groups (-4.625634, 2.022746). Therefore, we can conclude that with a 95% level of confidence, the treatment group
+and the observed group did not have a significant difference in their quality of life score after 12 Months.
+
+
+Note : we used Wald test to find the p-value.
+
+```{r, echo=FALSE}
+# We will compare Treat=0 and Treat=1 for Months=12
+#Hypothesis testing: H0:beta2+12*beta3=0
+
+betas <- coef(model.unstr) # parameter estimates
+V <- vcov(model.unstr) # variance-covariance matrix of MLEs
+
+# we create an appropriate contrast matrix
+L2 <- t(as.matrix(c(0,0,1,12)))
+
+est2 <- c(L2 %*% betas) # estimated Score per group
+ses2 <- sqrt(diag(L2 %*% V %*% t(L2))) # std errors
+
+# We store estimates in data.frame
+# and add limits of 95% CI using the 
+# normal approximation
+results2 <- data.frame(Months12comparisson = "beta2+12*beta3")
+results2$est <- est2
+results2$low <- est2 - 1.96 * ses2
+results2$upp <- est2 + 1.96 * ses2
+#results2
+
+#p value
+#Wald test
+w.test2 <- wald.test(b = coef(model.unstr), 
+                    Sigma = vcov(model.unstr), 
+          L = rbind(c(0, 0, 1, 12)))
+#w.test2
+
+# F-test: "Thyroxin" group
+#anova(model.unstr, L = rbind(c(0, 0, 1, 12)))
+```
+
+
+
+### 1.1.4 Model diagnostics 
+
+We continued with the model diagnostics and more specific residuals analysis to check if the assumptions we made about them hold. Generally, normalized residuals are advised so we benefited from these residuals.
+We assumed for our model that data should be normally distributed so the normalized residuals should form a straight line around the diagonal.
+Moreover residuals should have mean zero at each time point.
+
+
+We first plotted normalized residuals versus fitted values :
+
+```{r, echo=FALSE}
+
+plot(model.unstr, resid(., type = "n") ~ fitted(.), 
+     type = c("p", "smooth"), lwd = 3)
+plot(model.unstr, resid(., type = "n") ~ fitted(.)|Treatn, 
+     type = c("p", "smooth"), lwd = 3)
+```
+Around 0 we can observe the errors have a slight trend towards negative values which might suggest that our model is not perfect. This means we are mostly capturing the relationship of our model, however there might be some aspects the model is not taking into account. We cannot observe a trend over time at some time points which indicates the mean has been correctly specified as a function for time (months). In future analysis it could be of interest to measure and add further covariates into the data and model. It can also be said, the model does not indicate strong misspecification in the mean nor the variance structure.
+
+Finally we made the Q-Q plot of normalized residuals:
+
+```{r, echo=FALSE}
+qqnorm(model.unstr, ~ resid(., type = "n"), abline = c(0, 1))
+```
+When plotting the Q-Q plots we are comparing the distribution to see if it behaves normally. 
+We conclude, that the Q-Q plot of our normalized residuals is not perfect and suggests 
+that a heavier tailed distribution than the normal may fit the data better.
+
+## 1.2 Linear mixed-effects model
+
+We continue our analysis with the linear mixed-effects model in order to address the same research questions as we did at the previous part.
+
+We start our fitting with two approaches for the random part of the models.
+The first has the random intercept part (bi0) and the second both the random intercept and the random slope (bi0 and bi1 respectively).
+
+Model description and Assumptions:
+
+The linear mixed-effects model offer an alternative way to model the correlation between repeated measurements on the same subject. The main idea is that each individual has his own profile which
+deviates from the population mean profile,an alternative approach to model flexibly within -subject
+correlation. In particular, Mixed effects models contain both fixed effects (population mean) and random effects (coviariance).
+
+As regard as the assumptions of the linear mixed model, the random effects follow the normal distribution all with mean equals to zero but with different variances and the error terms are
+independent of the covariates and follow all the same normal distribution.
+
+
+The lme() function does the fitting with the unstructured matrix as default, so we start with fitting a LMM model with random intercept and unstructured correlation matrix.
+
+```{r, echo=FALSE}
+# Fit LMM with random intercept
+model.random <- lme(Score ~ Months * Treat, random = ~1|ID, 
+                        weights = varIdent(form = ~1|Treat),
+                        data = qol3, method = "REML")
+
+summary(model.random)
+```
+
+```{r, echo=FALSE}
+
+# Fit LMM with random intercept & slope
+model.random.all <- lme(Score ~ Months * Treat, random = ~Months*Treat|ID, 
+                        weights = varIdent(form = ~1|Treat),
+                        data = qol3, method = "REML")
+
+summary(model.random.all)
+
+
+```
+
+
+```{r, echo=FALSE}
+
+# Compare the two models with LRT
+anova(model.random, model.random.all)
+
+# Note that the anova(.) method uses the \chi^2_2 asymptotic distribution. 
+# Here you need to consider the proper mixture of \chi^2 distributions.
+lrt. <- anova(model.random, model.random.all)$L.Ratio[2]
+
+
+P1=0.5*pchisq(lrt., df = 1, lower.tail = FALSE)+0.5*pchisq(lrt., df = 2, lower.tail = FALSE)
+```
+
+After fitting a model with random intercept and another one with random intercept and slope, we compare them by using the likelihood ratio test which refers to nested models (the two models are nested because in the "model.random.all" if I set the slope bi1 equal to 0 , I end up with the "model.random" which is the model with only the random intercept bi0). In general we test the q versus q+1 random effects models by the asymptotic null distribution of the LRT that is given by the following formula: 
+LRT ~ 0.5 * chisq(df = q) + 0.5* chisq(df = q+1)
+
+In the table above we have the output of the ANOVA and the LRT test between the two models. The likelihood ratio test equals 4.78 and the p-value using the above mentioned LRT distribution  equals to 0.0602 > 0.05 which makes the presence of the random slopes non-significant. 
+
+Based on these results, we conclude that the "model. random" which has only the random intercept in its random part, fits the model better. Hence, we will continue our analysis with the following model:
+
+Score = beta0 + beta1 * Months + beta2 * Treat + beta3 * Months * Treat + bi0
+
+
+### 1.2.1
+
+Starting with the first research question as in the previous part:
+
+Does the assigned treatment have an effect on the mean progression of the quality of life?
+
+To answer this question we see from the above summary of our model the p-values of the estimates. Since, only the Months variable is statistically significant, the mean Score is only significantly affected by the Months and not by the Treatment group in which each patient belongs to. That is in parallel with our conclusion in the Linear Regression Model.
+
+
+### 1.2.2
+
+The second research question that we test is the following:
+
+Is there a difference in the quality of life at six months after surgery after completion of
+adjuvant chemotherapy for patients in the treatment group?
+
+To answer this question combination of estimates is needed.
+We found that analytically as shown before in [1.1a] and form the same contrast matrix.
+
+```{r, echo=FALSE}
+# We will compare Months=1 and Months=6 for Treat=1
+#Hypothesis testing: H0:beta1+beta3=0
+
+betas.random <- summary(model.random)$tTable[,"Value"] # parameter estimates
+V.random <- vcov(model.random) # variance-covariance matrix of MLEs
+
+# we create an appropriate contrast matrix
+L.random6 <- t(as.matrix(c(0,1,0,1)))
+
+est.random6 <- c(L.random6 %*% betas.random) # estimated Score per group
+ses.random6 <- sqrt(diag(L.random6 %*% V.random %*% t(L.random6))) # std errors
+
+# We store estimates in data.frame
+# and add limits of 95% CI using the 
+# normal approximation
+results.random6 <- data.frame(treat1compariosson = "beta1+beta3")
+results.random6$est <- est.random6
+results.random6$low <- est.random6 - 1.96 * ses.random6
+results.random6$upp <- est.random6 + 1.96 * ses.random6
+results.random6
+
+
+#p value
+
+#Wald test
+library(aod)
+w.test11 <- wald.test(b = summary(model.random)$tTable[,"Value"], 
+                    Sigma = vcov(model.random),
+                    L = rbind(c(0, 1, 0, 1)))
+w.test11
+
+# F-test: 
+anova(model.random, L = rbind(c(0, 1, 0, 1)))
+```
+
+The result of  the F-test is 40.2 with p-values <.0001 and thus is statistically significant. Hence, we conclude that there is difference in the quality of life at six months after surgery in the treatment groups (Treat = 1).
+
+95% confidence interval of beta1+beta3:[0.41337, 0.783338]
+p-value: 0.4431
+
+### 1.2.3
+
+Is there a difference between the two groups at 12 months after surgery? Give the
+corresponding 95% confidence interval and p-value.
+
+```{r, echo=FALSE}
+# We will compare Treat=0 and Treat=1 for Months=12
+#Hypothesis testing: H0:beta2+12*beta3=0
+
+betas.random <- summary(model.random)$tTable[,"Value"] # parameter estimates
+V.random <- vcov(model.random) # variance-covariance matrix of MLEs
+
+
+# we create an appropriate contrast matrix
+L2.random <- t(as.matrix(c(0,0,1,12)))
+
+est.random12 <- c(L2.random %*% betas.random) # estimated Score per group
+ses.random12 <- sqrt(diag(L2.random %*% V.random %*% t(L2.random))) # std errors
+
+# We store estimates in data.frame
+# and add limits of 95% CI using the 
+# normal approximation
+results.random12 <- data.frame(Months12comparisson = "beta2+12*beta3")
+results.random12$est <- est.random12
+results.random12$low <- est.random12 - 1.96 * ses.random12
+results.random12$upp <- est.random12 + 1.96 * ses.random12
+results.random12
+
+#p value
+#Wald test
+w.test.random12 <- wald.test(b = summary(model.random)$tTable[,"Value"], 
+                    Sigma = vcov(model.random),
+                    L = rbind(c(0, 0, 1, 12)))
+w.test.random12
+
+# F-test: 
+model.a <- lmer(Score ~ Months*Treat + (1|ID), data = qol3)
+anova(model.a, L = rbind(c(0, 0, 1, 12)))
+summary(glht(model.random, L))
+```
+95% confidence interval of beta1+beta3:[-4.501181, 2.028444]
+p-value: 2.3e-10
+
+Based on the output of model.random the coefficient beta2+12*beta3 is not 
+significant and based on its interval is very likely to be zero. This, means 
+that the difference between the two treatment groups in 12 Months is not 
+significant. 
+So, the adjuvant chemotherapy does not have a significant difference with 
+observation group at the last observation.
+
+### 1.2.4 Model Diagnostics
+
+We again,as with the linear regression model continued with the model diagnostics and more specific residuals analysis to check if the assumptions we made about them hold.
+We again used normalized residuals.
+The normalized residuals should form a straight line around the diagonal and
+they should have mean zero at each time point.
+We first ploted normalized residuals Vs fitted values:
+
+```{r, echo=FALSE}
+# residuals
+
+plot(model.random, resid(., type = "n") ~ fitted(.), 
+     type = c("p", "smooth"), lwd = 3)
+```
+
+The above plot does indicates that our residuals do not have mean equal to zero 
+at all points as we assumed. However is close to it.
+
+And we also checked the normality assumptions of the residuals for the final model:
+
+```{r, echo=FALSE}
+qqnorm(model.random, ~ resid(., type = "n"), abline = c(0, 1))
+
+```
+
+In conclusion, our normalized residuals have deviations from normality and 
+the fit is not perfect.
+
+## 1.3 Comparison
+
+
+
+```{r}
+anova(model.unstr, model.random)
+```
+
+When comparing the results between the multivariate model and the linear mixed effects model we can observe a lower AIC score for the unstructered multivariate model (AIC = 6171.648) than for the linear mixed effects model (AIC = 6206.736). Based on the AIC, we propose to choose the multivariate model for future analysis on a comparable data set. After comparing the assumptions of the two models, for the linear mixed effects model we can observe stronger violations in the assumptions.
+
+# 2 Presence of Complaints
+
+We continue our analysis with a different research question. Our new research question aims to examine whether the probability of at most 2 complaints changes over time (longitudinal effect) and if this change depends on the assigned treatment. The Complaints variable is categorical, the Months variable is continuous and finally, the Treat variable is again categorical.
+As the dependent variable (Complaints) is categorical, we test our research question by two suitable approaches, the Generalized Estimating Equations (GEE) approach and the mixed-effects logistic regression.
+
+## Visualisatiion
+
+We start by visualizing the complaints with respect to months and the treatment group, using also summary statistics to investigate longitudinal evolutions.
+
+
+
+We first plot the percentages in time for the Complaints for each treatment.
+
+```{r, echo=FALSE}
+# plot percentages in time and per group
+
+
+xyplot(Complaints ~ Months | Treatn, data = qol3,
+       xlab = "Months", ylab = "Complaints>2",
+       panel = function(x, y) {
+            panel.average(x, y, horizontal = FALSE, col = "blue")
+       })
+```
+The above plots show the almost absolute presence of more than 2 complaints in both treatment groups at
+all time steps (months). Both dots and the mean lines are close to 1 which refers to the case when the
+complaints are more than 2.
+
+As we observed,the percentages of 'More than two complaints' seem 
+to evolve differently between the two treatment groups.
+The percentages for the chemotherapy group remain rather stable, 
+while the  percentages increase in the observation group. 
+Note that the percentages are at the same level at the first month.
+
+
+We continued our exploration by doing bar plots for the Complains variable 
+taking into account all the data.
+
+```{r, echo=FALSE}
+table(qol3$Complaints)
+
+barplot(table(qol3$Complaints),
+        main='Observed',
+        ylab ='Number of Complaints',
+        ylim=c(0, length(qol3$Complaints)))
+
+
+```
+
+With the above table and bar plot we see that there are so many more subjects 
+for which the Complaints variable equals to one rather than equals to zero.
+
+
+After that we made the same plot but now for each Treatment group separately.
+
+```{r, echo=FALSE}
+par(mfrow=c(1,2))
+
+ymax <- max(nrow(data0), nrow(data1))
+
+barplot(table(data0$Complaints),
+        main='Observed',
+        ylab ='Number of Complaints',
+        ylim=c(0, ymax))
+
+barplot(table(data1$Complaints),
+        main='Adjuvant chemotherapy',
+        ylab ='Number of Complaints',
+        ylim=c(0, ymax))
+```
+
+
+Then, we did the same but now for each Month separately and additionally we made a table with the probabilities of Complaints=1 (left part of table) and Complaints=0 (right part of table)for each month represented by a row.
+
+
+```{r, echo=FALSE}
+
+
+data1m=qol3[qol3$Months==1,]
+data3m=qol3[qol3$Months==3,]
+data6m=qol3[qol3$Months==6,]
+data12m=qol3[qol3$Months==12,]
+par(mfrow=c(1,4))
+barplot(table(data1m$Complaints),
+        main='Month 1',
+        ylab ='Number of Complaints',
+        ylim=c(0, ymax))
+
+barplot(table(data3m$Complaints),
+        main='Month 3 ',
+        ylab ='Number of Complaints',
+        ylim=c(0, ymax))
+
+barplot(table(data6m$Complaints),
+        main='Month 6',
+        ylab ='Number of Complaints',
+        ylim=c(0, ymax))
+
+barplot(table(data12m$Complaints),
+        main='Month 12',
+        ylab ='Number of Complaints',
+        ylim=c(0, ymax))
+
+as.data.frame(table(data1m$Complaints))$Freq/length(data1m$Complaints)
+as.data.frame(table(data3m$Complaints))$Freq/length(data3m$Complaints)
+as.data.frame(table(data6m$Complaints))$Freq/length(data6m$Complaints)
+as.data.frame(table(data12m$Complaints))$Freq/length(data12m$Complaints)
+```
+
+
+Overall, there seems to be a trend toward more than two complains per patient 
+for all the months. 
+
+
+
+We also plot for each months the Complaints variable separately for each Treatment group 
+
+```{r, echo=FALSE}
+data1m1t=data1m[data1m$Treat==1,]
+data1m0t=data1m[data1m$Treat==0,]
+
+data3m1t=data3m[data3m$Treat==1,]
+data3m0t=data3m[data3m$Treat==0,]
+
+data6m1t=data6m[data6m$Treat==1,]
+data6m0t=data6m[data6m$Treat==0,]
+
+data12m1t=data12m[data12m$Treat==1,]
+data12m0t=data12m[data12m$Treat==0,]
+par(mfrow=c(2,4))
+#Month 1
+barplot(table(data1m0t$Complaints),
+        main='Observed Month 1',
+        ylab ='Number of Complaints',
+        ylim=c(0, ymax))
+
+barplot(table(data1m1t$Complaints),
+        main='Chemotherapy  Month 1',
+        ylab ='Number of Complaints',
+        ylim=c(0, ymax))
+
+#Month 3
+barplot(table(data3m0t$Complaints),
+        main='Observed  Month 3',
+        ylab ='Number of Complaints',
+        ylim=c(0, ymax))
+
+barplot(table(data3m1t$Complaints),
+        main='Chemotherapy  Month 3',
+        ylab ='Number of Complaints',
+        ylim=c(0, ymax))
+
+#Month 6
+barplot(table(data6m0t$Complaints),
+        main='Observed  Month 6',
+        ylab ='Number of Complaints',
+        ylim=c(0, ymax))
+
+barplot(table(data6m1t$Complaints),
+        main='Chemotherapy  Month 6',
+        ylab ='Number of Complaints',
+        ylim=c(0, ymax))
+
+#Month 12
+
+barplot(table(data12m0t$Complaints),
+        main='Observed  Month 12',
+        ylab ='Number of Complaints',
+        ylim=c(0, ymax))
+
+barplot(table(data12m1t$Complaints),
+        main='Chemotherapy  Month 12',
+        ylab ='Number of Complaints',
+        ylim=c(0, ymax))
+
+```
+The above specified trend seems to holds for both treatment groups.
+
+
+We also explore the missingness of the data and we made the following table:
+
+```{r, echo=FALSE}
+data.frame(Months=c(1,3,6,12),
+           observed=c(length(qol3[qol3$Time==1&qol3$Treat==0,1]),
+                   length(qol3[qol3$Time==2&qol3$Treat==0,1]),
+                   length(qol3[qol3$Time==3&qol3$Treat==0,1]),
+                   length(qol3[qol3$Time==4&qol3$Treat==0,1])),
+           chemotherapy=c(length(qol3[qol3$Time==1&qol3$Treat==1,1]),
+                   length(qol3[qol3$Time==2&qol3$Treat==1,1]),
+                   length(qol3[qol3$Time==3&qol3$Treat==1,1]),
+                   length(qol3[qol3$Time==4&qol3$Treat==1,1])),
+           total=c(length(qol3[qol3$Time==1,1]),
+                   length(qol3[qol3$Time==2,1]),
+                   length(qol3[qol3$Time==3,1]),
+                   length(qol3[qol3$Time==4,1])))
+```
+
+
+It is obvious that, although the number of measurements scheduled per subject 
+was fixed, not all measurements are available for unknown reasons.
+
+After finishing the first step of our analysis which was to visually inspect 
+our data we proceed further to answer our research question of whether the 
+probability of at most 2 complaints change in time and how does this depend on 
+the assigned treatment.
+
+## 2.1 GEE approach
+
+
+```{r, echo=FALSE}
+id_counts <- table(qol3$ID)
+missing <- vector()
+for(i in 1:226){
+if (id_counts[i] != 4){
+missing[i] <- 1
+}
+else missing[i] <- 0
+}
+treat <- vector()
+for(i in unique(qol3$ID)){
+treat[i] = qol3$Treat[i]
+}
+df <- data.frame("id" = unique(qol3$ID),
+"treatment" = treat,
+"missing data" = missing)
+df$treatment <- ifelse(df$treatment == 0, "observation", "adjuvant")
+
+df$missing.data <- ifelse(df$missing.data == 0, "no missing", "missing data")
+```
+
+Model Description and Assumptions:
+
+The first approach that we use for the analysis of the categorical variable Complaints is the Generalized Estimating Equations (GEE) approach. The GEE approach is one of the methods to analyze generalized linear models in the multivariate case. In other words, is commensurable to the multivariate regression model that we show previously in the continuous case. More specifically, the GEE approach is a marginal approach for the analysis of non-gaussian repeated measurements. We specify it as marginal because we make inferences for the population means. Furthermore, the mean and the correlation are modeled separately (as we will see in the following fitting) and lastly, the focus is on the changes in the mean in time without having random effects that affect the correlation in data.
+
+
+The main focus in the GEE approach is on the following assumption:
+
+1. Correct specification of the mean model
+
+2.Large sample size (the sample size for this study is 226 individuals so it fulfills that parameter)
+
+3. No missing data or missing at random
+
+```{r, echo=FALSE}
+table(df$treatment,df$missing.data)
+```
+4. Sensitive to outliers
+
+
+In the data set we have missing values (32 in the adjuvant chemotherapy treatment group and 15 observation) and thus we cannot make strong conclusions under the GEE approach as we mentioned at the beginning.
+
+Model fitting:
+As the GEE approach is a marginal approach, first we need to specify the model for the mean and thus we choose a logistic regression model to describe the change of complaints over time. After specifying the mean model, we need to make an assumption about the within subject correlation.
+
+MODEL 1: 
+mean model: logistic regression model
+Within subject correlation matrix: Unstructured 
+We assume that the form of the pairwise dependences is different for each subject and hence we choose the unstructured matrix.
+
+complaints = beta0 + beta1 * Treat + beta2 * Months + beta3 * Treat * Months.
+
+
+In geepack the ordering within subject is important but our data set is already in the proper form. The observations are ordered by increasing ID and Month.
+```{r, echo=FALSE}
+gee.unstr <- geeglm(Complaints ~ Months * Treat,
+                    data = qol3,
+                    id = ID, family = binomial("logit"),
+                    corstr = "unstructured")
+summary(gee.unstr)$coefficients
+
+```
+
+MODEL 2: 
+
+mean model: the marginal probability of complaints is a logistic function of covariates and we assume quadratic Months trend in case that Months trend differ between the two Treatment groups
+Within subject correlation matrix: Unstructured
+
+complaints = beta0 + beta1 * Treat + beta2 * Months + beta3 * Monthsˆ2 + beta4 * Treat * Months + beta5 * Treat * Monthsˆ2
+
+```{r, echo=FALSE}
+gee.unstr.quadr <- geeglm(Complaints ~ Months * I(Treat) + I(Treat)^2,
+                          data = qol3,
+                          id = ID, family = binomial("logit"),
+                          corstr = "unstructured")
+summary(gee.unstr.quadr)$coefficients
+
+```
+
+```{r, echo=FALSE}
+ 
+summary(gee.unstr)$coefficients
+
+
+summary(gee.unstr.quadr)$coefficients
+
+```
+We observe that the two models have the same output and thus we continue our analysis by using the simplest one which is model 1 with the logistic regression model for the mean without the quadratic form for the Months.
+
+complaints = beta0 + beta1 * Treat + beta2 * Months + beta3 * Treat * Months
+
+
+After choosing the most suitable mean model, we test our assumption about the correlation matrix. In the GEE approach, we have to specify correctly the model for the mean when at the same time the model of variance-correlation could be even misspecified. Taking into consideration this parameter, we use the Sandwich or Robust estimator to compute correctly the variance of beta_hat even when the correlation matrix is not correctly specified.
+
+We test the exchangeable matrix on the chosen mean model.
+
+MODEL 1.1 - Exchangeable matrix:
+
+```{r, echo=FALSE}
+
+gee.exch <- geeglm(Complaints ~ Months * Treat, 
+                  data = qol3, 
+                  id = ID, family = binomial("logit"), 
+                  corstr = "exchangeable")
+
+summary(gee.exch)$coefficients
+
+
+
+```
+
+We also tested the fitting with the AR(1) and the independence matrix but these matrices (including the exchangeable matrix) influence more the estimates resulting in non-significant results.
+
+Hypothesis testing:
+
+Now that we found the best fitted model (gee.unstr) with logistic regression model for the mean and unstructured correlation matrix, it's time to make a hypothesis test to answer the research question.
+
+Again the research question is:
+Does the probability of at most 2 complaints change in time and how does this depend
+on the assigned treatment? 
+
+And the chosen model:
+
+complaints = beta0 + beta1 * Treat + beta2 * Months + beta3 * Treat * Months
+
+
+```{r, echo=FALSE}
+
+coefs.gee <- summary(gee.unstr)$ coefficients[, "Estimate"]
+std.err.gee <- summary(gee.unstr)$ coefficients[, "Std.err"]
+nams.gee <- rownames(summary(gee.unstr)$ coefficients)
+```
+
+These are the ratios of the log-odds between patients in the adjuvant chemotherapy group versus those in the observation group.
+```{r, echo=FALSE}
+
+mt1 <- round(coefs.gee[nams.gee == "Treat"] + coefs.gee[nams.gee == "Months:Treat"], 3)
+paste("Treatment effect at Month 1:", mt1)
+# Treatment effect at Month 3:
+mt3 <-round(coefs.gee[nams.gee == "Treat"] + 3*coefs.gee[nams.gee == "Months:Treat"], 3)
+paste("Treatment effect at Month 3:", mt3)
+# Treatment effect at Month 6:
+mt6 <-round(coefs.gee[nams.gee == "Treat"] + 6*coefs.gee[nams.gee == "Months:Treat"], 3)
+paste("Treatment effect at Month 6:", mt6)
+# Treatment effect at Month 12:
+mt12 <-round(coefs.gee[nams.gee == "Treat"] + 12*coefs.gee[nams.gee == "Months:Treat"], 3)
+paste("Treatment effect at Month 12:", mt12)
+
+```
+
+
+```{r, echo=FALSE}
+t2.gee <- wald.test(b = gee.unstr$"coefficients", 
+                Sigma = gee.unstr$"geese"$"vbeta", 
+                L = rbind(c(0,0,1,0)))
+
+t3.gee <- wald.test(b = gee.unstr$"coefficients", 
+                Sigma = gee.unstr$"geese"$"vbeta", 
+                L = rbind(c(0,0,0,1)))
+
+
+teff.2.pval <- t2.gee$"result"$chi2["P"]
+teff.3.pval <- t3.gee$"result"$chi2["P"]
+
+# p-value for beta2
+paste("p-value for beta2:", teff.2.pval)  # non significant 
+
+# p-value for beta3
+ # statistical significant 
+paste("p-value for beta3:", teff.3.pval)
+```
+We can see from that beta2 = 0.279 is statistically non significant for alpha=0.05 which suggests that the probability of 'at most 2 complaints(i.e Complaints=1)' does not change between treatment groups.
+
+However, beta3 = 0.0492 is statistically significant for alpha = 0.05 
+which suggests that the probability of 'at most 2 complaints (i.e Complaints=1)'
+depends on the assigned treatment additionally to the time passed.
+ 
+ 
+We need to correct for multiple testing and we do that in R using the function p.adjust(.) and choose the method "Bonferroni".
+```{r, echo=FALSE}
+pvals <- c(summary(gee.unstr)$ coefficients["(Intercept)", "Pr(>|W|)"], 
+           t2.gee$"result"$chi2["P"], t3.gee$"result"$chi2["P"])
+
+names(pvals) <- c("Intercept", "beta2", "beta3")
+# Unadjusted p-values
+round(pvals,5)
+
+# Adjusted p-values
+p.adjust(round(pvals, 3), method = "bonferroni")
+```
+After multiple testing correction the treatment effects during the Months passed are non significant.
+
+Next we compute the log-odds of at most 2 complaints per treatment group, with corresponding 95% confidence interval:
+
+```{r, echo=FALSE}
+vcov.g <- gee.unstr$"geese" $"vbeta"
+
+newData.gee <- data.frame(Center = rep(1, 8), 
+                      ID = rep(c("101", "102"), each = 4), 
+                      Treat = rep(c("chemotherapy", "observed"), each = 4), 
+                      Months = c(1, 3, 6, 12))
+
+X.gee <- model.matrix(~ Months * Treat, data = newData.gee)
+
+betas.g <- summary(gee.unstr)$ coefficients[, "Estimate"]
+
+fitted.vals.gee <- X.gee %*% betas.g
+
+
+# we include these estimates, their standard errors and the
+# asymptotic 95% CI in the original data.frame
+
+newData.gee$fit <- fitted.vals.gee
+newData.gee$se <- sqrt(diag(X.gee %*% vcov.g %*% t(X.gee)))
+newData.gee$lo <- newData.gee$fit - 1.96 * newData.gee$se
+newData.gee$up <- newData.gee$fit + 1.96 * newData.gee$se
+
+newData.gee
+```
+
+To answer the research question, we make the hypothesis that the two treatment groups have similar mean log-odds profiles in time.
+
+ Let mu1, mu2, mu3 , mu4 the true treatment effects at each of the 4 time points. The hypothesis of interest is: 
+H0: mu1 = mu2 = mu3 = mu4 = 0
+
+versus 
+
+
+HA: mu1 != mu2 != mu3 != mu4 != 0   at least one different from zero 
+
+To test the significance of specific combination of parameters, we can use the multivariate Wald test.
+Furthermore , the only applicable test in the GEE approach is the Wald test and here are the results of the wald test that we did while testing the above hypothesis:
+
+```{r, echo=FALSE}
+# Test the hypothesis that the two treatment groups have similar mean log-odds profiles in time.
+tt <- wald.test(b = gee.unstr$"coefficients", 
+                Sigma = gee.unstr$"geese"$"vbeta", 
+                L = rbind(c(0,0,1,0), c(0,0,0,1)))
+tt
+
+
+```
+
+The p-value is 0.14 which is bigger than 0.05 and thus it is non-significant. Under that result, we do not reject the null hypothesis and we have found that there is a non-significant difference at a significance level of 5% between the two groups in the mean profiles for log-odds of at most 2 Complaints. Hence, both treatment groups have similar mean log-odds profiles during Months.
+
+
+And the odds-ratios that represent the effect of treatment at each month for the Complaints variable:
+
+```{r, echo=FALSE}
+coefs.gee <- summary(gee.unstr)$ coefficients[, "Estimate"]
+std.err.gee <- summary(gee.unstr)$ coefficients[, "Std.err"]
+nams.gee <- rownames(summary(gee.unstr)$ coefficients)
+
+# Treatment effect at Month 1: 
+od1 <- round(exp(coefs.gee[nams.gee == "Treat"] + coefs.gee[nams.gee == "Months:Treat"]), 3)-1
+paste("Treatment effect at Month 1 - odds ratio:", od1)
+# Treatment effect at Month 3: 
+od3 <- round(exp(coefs.gee[nams.gee == "Treat"] + 3*coefs.gee[nams.gee == "Months:Treat"]), 3)-1
+paste("Treatment effect at Month 3 - odds ratio:", od3)
+# Treatment effect at Month 6: 
+od6 <- 1-round(exp(coefs.gee[nams.gee == "Treat"] + 6*coefs.gee[nams.gee == "Months:Treat"]), 3)
+paste("Treatment effect at Month 6 - odds ratio:", od6)
+# Treatment effect at Month 12: 
+od12 <- 1-round(exp(coefs.gee[nams.gee == "Treat"] + 12*coefs.gee[nams.gee == "Months:Treat"]), 3)
+paste("Treatment effect at Month 12 - odds ratio:", od12)
+```
+All exp(beta) are smaller than 1 and the above numbers show the decreased odds. (We subtract them by 1.)
+
+Finally the probability of at most 2 complaints with respect to months:
+
+```{r, echo = FALSE}
+
+  
+# Treatment effect at Month 1: 
+prob1 <- round((round(exp(coefs.gee[nams.gee == "Treat"] + coefs.gee[nams.gee == "Months:Treat"]), 3)-1)/(1 + (round(exp(coefs.gee[nams.gee == "Treat"] + coefs.gee[nams.gee == "Months:Treat"]), 3)-1)),3)
+paste("Treatment effect at Month 1 - probability:", prob1)
+
+# Treatment effect at Month 3: 
+prob3 <- round((round(exp(coefs.gee[nams.gee == "Treat"] + 3*coefs.gee[nams.gee == "Months:Treat"]), 3)-1)/(1+(round(exp(coefs.gee[nams.gee == "Treat"] + 3*coefs.gee[nams.gee == "Months:Treat"]), 3)-1)), 3)
+paste("Treatment effect at Month 3 - probability:", prob3)
+
+# Treatment effect at Month 6: 
+prob6 <- round((1-round(exp(coefs.gee[nams.gee == "Treat"] + 6*coefs.gee[nams.gee == "Months:Treat"]), 3))/(1+(1-round(exp(coefs.gee[nams.gee == "Treat"] + 6*coefs.gee[nams.gee == "Months:Treat"]), 3))),3)
+paste("Treatment effect at Month 6 - probability:", prob6)
+
+# Treatment effect at Month 12: 
+prob12 <- round((1-round(exp(coefs.gee[nams.gee == "Treat"] + 12*coefs.gee[nams.gee == "Months:Treat"]), 3))/(1+(1-round(exp(coefs.gee[nams.gee == "Treat"] + 12*coefs.gee[nams.gee == "Months:Treat"]), 3))),3)
+paste("Treatment effect at Month 12 - probability:", prob12)
+```
+Based on that results we observe that the probability of at most 2 complaints is the same for three out of four measurements of time. Hence, overall there is no change in the probability of at most 2 complaints except for the third month after surgery. 
+
+
+
+## 2.2 Mixed-effects logistic regression model
+
+Next, we used mixed-effects logistic regression, where the log-odds is modeled 
+as a function of Months, treatment and interaction of Months with treatment. 
+With that method we get the chance to capture the within subject correlations 
+which is not possible in the GEE approach.
+Each model has his own profile in time. For that model we assume that the 
+coefficients, vary according to a distribution. The structure of the model:
+
+
+log(pij/(1-pij))=xij^T * beta+zij^T*bi
+and the same assumptions hall as in LMM mentioned in 1.1.
+
+In the mixed-effects logistic regression approach we first compared the Gaussian 
+Quadrature method and the Laplace approximation in order to select the most
+accurate model. For both the methods we fit two models, one with random slopes 
+and one without and we test (using anova() function and 
+0.5*pchisq(df = 2) + 0.5*pchisq(df = 1)) which one is the best model.
+
+Firstly we did the above mentioned procedure for the Laplace approach. 
+
+```{r, echo=FALSE, warning=F}
+library(lme4)
+# The models are fitted by default with the Laplace approach.
+
+#Random intercepts
+
+model.slopes0 <- glmer(Complaints ~ Months*Treat + 
+                          (1|ID), data = qol3,
+                        family =  "binomial", nAGQ = 1, 
+                        control = glmerControl(optimizer="bobyqa"))
+
+#Random intercepts and random slopes
+model.slopes1 <- glmer(Complaints ~ Months*Treat + 
+                          (Months|ID), data = qol3, 
+                        family =  "binomial", nAGQ = 1, 
+                        control = glmerControl(optimizer="bobyqa"))
+
+print(model.slopes1, corr = FALSE)
+
+anova(model.slopes0, model.slopes1)
+lrt. <- anova(model.slopes0, model.slopes1)$ Chisq[2]
+0.5*pchisq(lrt., df = 2) + 0.5*pchisq(lrt., df = 1) 
+
+
+```
+
+We conclude, based on the LRT, that the random slopes term is not statistically 
+significant.
+
+Regarding Gaussian quadrature approach, after comparing for multiple values of Quadrature(Q=5,10,13,16,20,50) we decided that Q=16 is a reasonable choice for 
+further analysis since the parameter estimates stabilize after that Q and it is 
+not very computationally intensive to fit. And then, we compared the random 
+intercept and random slope model as we did with the Laplace approach.
+
+```{r,, echo=FALSE, warning=F}
+library(GLMMadaptive)
+
+#Random intercepts
+model.slopes0 <- mixed_model(Complaints ~ Months*Treat, 
+                              random = ~ 1|ID, 
+                              data = qol3, 
+                              family =  "binomial", 
+                              control = list(nAGQ = 16,glmerControl(optimizer="bobyqa")))
+
+print(model.slopes0)
+
+#Random intercepts and random slopes
+#model.slopes1 <- mixed_model(Complaints ~ Months*Treat, 
+                              #random = ~Months|ID, 
+                              #data = qol3, 
+                              #family =  "binomial", 
+                              #control = list(nAGQ = 16,glmerControl(optimizer="bobyqa")))
+
+
+
+#lrt.1 <- anova(model.slopes0, model.slopes1)$LRT
+#0.5*pchisq(lrt.1, df = 2) + 0.5*pchisq(lrt.1, df = 1) 
+
+```
+Again, based on the LRT, the random slopes term is not statistically 
+significant.
+
+So, we decided that the most accurate model is the one fitted without random 
+slope and Q=16, since, as known from the theory, Laplace approach perform poorly
+with binary data and require many repeated measurements per subject. However, we
+fitted it with the glmer() function instead of mixed_model() one for the next 
+steps of our analysis.
+
+
+```{r, echo=FALSE}
+
+#Random intercepts model which is estimated using the adaptive Gaussian 
+#Quadrature method with 16 points
+
+model.chosen <- glmer(Complaints ~ Months*Treat+(1|ID), 
+                              data = qol3, 
+                              family =  "binomial", 
+                              nAGQ = 16,
+                      control = glmerControl(optimizer="bobyqa"))
+
+print(summary(model.chosen))
+
+
+```
+
+The random-effects variance, which is equal to 5.52, represents the size of the 
+heterogeneity between patients. 
+It shows that there is a rather high variability 
+in the first month's log-odds of a more than two complaints status.
+
+We can also see from the summary of our model that beta1=0.385 is statistically 
+significant for alpha=0.1 which suggests that the probability of 'at most 2 
+complaints(i.e Complaints=1)' changes in time.
+Moreover beta3=-0.441 is also statistically significant, now for alpha=0.05 
+which suggests that the probability of 'at most 2 complaints (i.e Complaints=1)'
+also depends on the assigned treatment additionally to the time passed.
+
+Note that the estimated fixed effects parameters represent log-odds ratios.
+
+We also computed the 95% intervals of our estimates:
+
+Table of estimates with 95% CI on log odds ratio:
+
+```{r, echo=FALSE}
+
+se <- sqrt(diag(vcov(model.chosen)))
+(tab <- cbind(Est = fixef(model.chosen), 
+              LL = fixef(model.chosen) - 1.96 * se, 
+              UL = fixef(model.chosen) + 1.96 * se))
+```
+
+Table of estimates with 95% CI on odds ratio:
+
+```{r, echo=FALSE}
+(exp(tab))
+```
+
+
+To see how the Complaints differ between the two treatment groups for each month 
+we estimated their odds ratio(i.e oddsA1/oddsA0 where oddsA1 are the odds of 
+Month=A and Treat=1 and oddsA0 are the odds of Month=A and Treat=0 and we did 
+that for A=1,3,6,12).
+
+```{r, echo=FALSE}
+coefs <- summary(model.chosen)$ coefficients[, "Estimate"]
+std.err <- summary(model.chosen)$ coefficients[, "Std. Error"]
+nams <- rownames(summary(model.chosen)$ coefficients)
+
+# Treatment effect at Month 1: 
+round(exp(coefs[nams == "Treat"]+coefs[nams == "Months:Treat"]), 3)-1
+
+# Treatment effect at Month 3: 
+round(exp(coefs[nams == "Treat"]+2*coefs[nams == "Months:Treat"]), 3)-1
+
+# Treatment effect at Month 6: 
+1-round(exp(coefs[nams == "Treat"] + 6*coefs[nams == "Months:Treat"]), 3)
+
+# Treatment effect at Month 12: 
+1-round(exp(coefs[nams == "Treat"] + 12*coefs[nams == "Months:Treat"]), 3)
+
+```
+
+We did it analytically and those where our results:
+
+The odds of 'having more than two Complaints,i.e Complaints=1' 
+for Treat=Observed group compared to Treat=Chemotherapy group were:
+
+increased by 140% in Month 1
+increased by 54% in Month 3
+decreased by 73.5% in Month 6
+decreased by 98.1% in Month 12
+
+In other words:
+1. The odds of a 'more than two complaints' status 
+at Month 1 for a specific patient are 2.4 times higher in the observed group 
+than in the chemotherapy group for the same patient.
+2. The odds of a 'more than two complaints' status 
+at Month 3 for a specific patient are 0.544 times higher in the observed group 
+than in the chemotherapy group for the same patient.
+3.The odds of a 'more than two complaints' status 
+at Month 6 for a specific patient are 0.265 times lower in the chemotherapy group 
+than in the observed group for the same patient.
+4. The log odds of a 'more than two complaints' status 
+at Month 3 for a specific patient are 0.019 times lower in the chemotherapy group 
+than in the observed group for the same patient.
+
+
+We also investigate the distribution of the posterior modes of the random 
+effects in the random intercepts model(i.e `model.chosen) doing the following .
+plots:
+
+```{r, echo=FALSE}
+library(lattice)
+#Caterpillar plot for Empirical Bayes estimates of the random effects
+
+dotplot(ranef(model.chosen, which = "ID", condVar = TRUE), 
+        scales = list(y = list(alternating = 0))) # suppress ID names
+
+
+```
+Here we observe a rather skewed distribution at the beginning but
+then the spread of the Empirical Bayes estimates is very small
+
+```{r, echo=FALSE}
+#Histogram for EB estimates of the random effects
+hist(ranef(model.chosen, which = "ID", condVar = TRUE)[[1]]$"(Intercept)", 
+     main = "Histogram of the EB estimates of the random-intercepts", 
+     freq = FALSE, xlab = "EB estimates", breaks = 21)
+```
+
+
+Furthermore, the histogram is rather skewed, which may indicate that the random 
+effects are not normally distributed as we assumed for fitting the 
+'model.chosen'. So, a different statistical model to analyze the data may be 
+more appropriate.
+
+## 2.3 Comparison
+After finishing the analysis with the mixed-effects logistic regression model we proceed to the comparison of it with GEE approach in order to decide which model
+should we choose.
+
+In general, the estimates obtained from GEE have a marginal interpretation, 
+whereas the ones obtained from the mixed-effects logistic regression model, a subject-specific interpretation. Thus they are not comparable.
+We observe though, that the subject-specific parameters 
+are larger in absolute value than the marginal parameters.
+
+As known from the literature, from the mixed-effects logistic regression model parameters we can obtain approximately parameters with marginal interpretation 
+and that is what we did first in order to be able to compare the two approaches.
+
+This can be done using the formula BetaM=BetaSS/sqrt(1+0.546*sigmaB^2), where
+BetaSS is the GLMM parameters and sigmaB^2 is the variance of the random 
+intercepts. BetaM is the parameter with marginal interpretation that we are 
+searching for.
+
+We found the following results:
+
+```{r, echo=FALSE}
+#For the Intercept parameter the transformation is:
+round(coefs[nams == "(Intercept)"]/sqrt(1 + 0.346 * VarCorr(model.chosen)[[1]][1]), 3)
+#For the Treat parameter the transformation is:
+round(coefs[nams == "Treat"]/sqrt(1 + 0.346 * VarCorr(model.chosen)[[1]][1]), 3)
+#For the Months parameter the transformation is:
+round(coefs[nams == "Months"]/sqrt(1 + 0.346 * VarCorr(model.chosen)[[1]][1]), 3)
+#For the treat parameter the transformation is:
+round(coefs[nams == "Months:Treat"]/sqrt(1 + 0.346 * VarCorr(model.chosen)[[1]][1]), 3)
+
+
+```
+
+
+Then we plot the subject-specific fitted probabilities of the two treatment 
+groups using the subject with ID=2.
+
+```{r, echo=FALSE}
+data.fitted2 <- data.frame(ID = 2, 
+                          Treat = c(rep("0", 4), rep("1", 4)), 
+                          Months = c(1, 3, 6, 12))
+
+probs <- predict(model.chosen, newdata = data.fitted2, type = "response")
+
+data.fitted2$fit <- probs
+xyplot(fit ~ Months | Treat,
+ data = data.fitted2,  
+ panel = function (...) {
+ panel.xyplot(..., lty = c(1),
+ col = "black", lwd = 2, type = "l")
+ }, xlab = "Months", 
+ main = "Fitted conditional probability of more than two Complaints",
+ ylab = "Probability of more than two complaints")
+
+```
+And then, the fitted probabilities for the median individual:
+
+```{r, echo=FALSE}
+data.fitted3 <- data.frame(ID = 3, 
+                          Treat = c(rep("0", 4), rep("1", 4)), 
+                          Months = c(1, 3, 6, 12))
+probs3 <- predict(model.chosen, newdata = data.fitted3, type = "response", 
+                 re.form = NA)
+data.fitted3$fit <- probs3
+xyplot(fit ~ Months | Treat,
+ data = data.fitted3,
+ panel = function (...) {
+ panel.xyplot(..., lty = c(1),
+ col = "black", lwd = 2, type = "l")
+ }, xlab = "Months", 
+ main = "Fitted conditional probability of 'Complains=1' for median subject",
+ ylab = "Probability of more than two complaints")
+```
+
+In the following plot we compared the above fitted probabilities:
+
+```{r, echo=FALSE}
+#Fitted probabilities 
+data.fitted <- do.call("rbind", list(data.fitted2, data.fitted3)) 
+
+
+xyplot(fit ~ Months | Treat, groups = ID, 
+ data = data.fitted,
+ panel = function (...) {
+ panel.xyplot(..., lty = c(1,2),
+ col = "black", lwd = 2, type = "l")
+ }, xlab = "Months", 
+ main = "Fitted conditional probabilities of more than two Complaints",
+ ylab = "Probability of of more than two Complaints")
+
+```
+
+The solid line represents the conditional fitted probabilities for ID 2, 
+whereas the dashed line corresponds to the fitted probabilities for the median 
+individual (i.e., b = 0)
+
+Plot of:Marginal fitted probabilities
+
+```{r, echo=FALSE}
+
+
+log.odds <- predict(model.chosen, newdata = qol3, type = "link",
+                    re.form = NA)
+meas.index <- match(qol3$ID, unique(qol3$ID))
+B <- 220
+probs.b <- matrix(NA, nrow = nrow(qol3), ncol = B)
+
+for(bb in 1:B){
+  b <- rnorm(length(unique(qol3$ID)), 0, 
+             sqrt(VarCorr(model.chosen)[[1]][1]))[meas.index]
+  probs.b[, bb] <- plogis(log.odds + b) 
+}
+
+qol3$MargProbs <- qol3$fit <- rowMeans(probs.b)
+
+
+xyplot(MargProbs ~ Months | Treat,
+ data = qol3[qol3$ID %in% c("5", "4"), ], 
+ panel = function (...) {
+ panel.xyplot(..., lty = c(1,2),
+ col = "black", lwd = 2, type = "l")
+ }, xlab = "Months", 
+ main = "Marginal fitted probabilities of 'more than two Complaints'",
+ ylab = "Probability of of more than two Complaints")
+
+```
+And finally, all the above plots combined:
+
+```{r, echo=FALSE}
+data.fitted.f <- do.call("rbind", 
+                         list(data.fitted2, 
+                              data.fitted3, 
+                              qol3[qol3$ID %in% c("4", "5"),
+                              c("ID", "Treat", "Months", "fit")]))
+ 
+xyplot(fit ~ Months| Treat, groups = ID, 
+ data = data.fitted.f,
+ panel = function (...) {
+ panel.xyplot(..., lty = c(1,2,3,3),
+ col = "black", lwd = 2, type = "l")
+ }, xlab = "Months", 
+ main = "Fitted conditional probabilities of 'more than two Complaints'",
+ ylab = "Probability of 'more than two Complaints'")
+```
+
+We can see that the probabilities of the median individual are almost the same
+with the specific-subject's probabilities but the marginal fitted probabilities 
+are rather different.
+
+After comparing the two models we believe that the model that should chose is 
+the the Mixed-effects model since it is valid under MAR whereas GEE is biased.
+Moreover our research question focus on the individual and the influence of 
+covariates on the individul and that can be better modelled by Mixed-effects model .  
+
+
+# Future Recommencations
+
+In this longitudinal study investigating the potential benefit of adjuvant chemotherapy after neoadjuvant (chemo-radiotherapy) and curative resection for rectal cancer, we found that time is the most meaningful predictor in quality of life scores. 
+
+Further analysis could involve the inclusion of additional variables, such as comorbidities or treatment-related factors, to better account for potential confounding variables that could explain and benefit quality of life outcomes. For instance, previous studies have found that patients treated with adjuvant chemotherapy reported clinically and significantly worse physical functioning and social function after 12 months and a lower score on the same quality of life questionnaire as in this analysis (Van Der Valk et al., 2019). Also other diseases such as the node-positive disease could explain the relationship (Lai et al., 2023). Next, including an indication cut off score for which amount of difference in quality of life is of clinical significance can be informative for practical purposes. 
+
+Identifying risk and resilience factors associated with quality of life in patients can improve statistical models to explain benefits and inform more effective interventions to improve the well-being of patients receiving adjuvant chemotherapy.
+
+
+
+References: 
+
+Lai, S. H., Vogel, J. D., Vemuru, S., Messersmith, W., Lieu, C., McCarter, M., Birnbaum, E., & Chapman, B. C. (2023). Improved Survival After Adjuvant Therapy in Locally Advanced Rectal Cancer Patients with Pathologic Complete Response. Diseases of the Colon & Rectum, Publish Ahead of Print. https://doi.org/10.1097/dcr.0000000000002641
+
+Van Der Valk, M. J. M., Hilling, D. E., Kranenbarg, E. M., Peeters, K. C., Kapiteijn, E., Tsonaka, R., Van De Velde, C., & De Mheen, P. J. M. (2019). Quality of Life After Curative Resection for Rectal Cancer in Patients Treated With Adjuvant Chemotherapy Compared With Observation: Results of the Randomized Phase III SCRIPT Trial. Diseases of the Colon & Rectum, 62(6), 711–720. https://doi.org/10.1097/dcr.0000000000001336 
+
+
