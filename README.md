@@ -17,14 +17,14 @@ This project analyses a simulated longitudinal dataset from a clinical trial inv
 ## Dataset
 File: `QOL-3.csv`
 Description of Variables:
--`ID`: Patient identifier 
-`Time`: Visit number (1–4) 
-`Months`: Month of visit post-surgery (1, 3, 6, 12) 
-`Score`: EORTC-C30 QoL score (continuous) 
-`Treat`: Treatment group (0 = observation, 1 = adjuvant chemotherapy) 
-`Treatn`: Treatment label ("observed" / "chemotherapy") 
-`Age`: Age at study inclusion (baseline) 
-`Complaints`: Presence of >2 complaints (0 = no, 1 = yes) 
+- `ID`: Patient identifier 
+- `Time`: Visit number (1–4) 
+- `Months`: Month of visit post-surgery (1, 3, 6, 12) 
+- `Score`: EORTC-C30 QoL score (continuous) 
+- `Treat`: Treatment group (0 = observation, 1 = adjuvant chemotherapy) 
+- `Treatn`: Treatment label ("observed" / "chemotherapy") 
+- `Age`: Age at study inclusion (baseline) 
+- `Complaints`: Presence of >2 complaints (0 = no, 1 = yes) 
 
 **Note:** `Months` is used as a continuous time variable rather than the visit index `Time`, as the intervals between visits are unequal (1, 3, 6, 12 months).
 
