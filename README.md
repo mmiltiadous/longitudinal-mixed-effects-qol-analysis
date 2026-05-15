@@ -40,6 +40,7 @@ Description of Variables:
 - Unstructured covariance matrix, REML estimation
 - Model selection via AIC across mean and covariance structures
 - Final model: `Score ~ Months * Treat`
+  
 **2. Linear Mixed-Effects Model (LMM)**
 - Random intercept per patient, unstructured residual correlation
 - Random slope comparison via likelihood ratio test
@@ -51,6 +52,7 @@ Description of Variables:
 - Marginal logistic regression, unstructured working correlation matrix
 - Robust sandwich variance estimator
 - Model: `Complaints ~ Months * Treat`
+
 **4. Mixed-Effects Logistic Regression (GLMM)**
 - Subject-specific logistic regression with random intercept
 - Adaptive Gauss-Hermite Quadrature (Q=16) vs. Laplace approximation
