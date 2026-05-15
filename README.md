@@ -68,7 +68,7 @@ Description of Variables:
 
 
  
-## Repository Structure
+## Structure
  
 - `data/` : raw data file (`QOL-3.csv`)
 - `analysis/` : R Markdown source (`Mixed_Model_Group_Assignment.Rmd`)
