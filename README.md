@@ -79,7 +79,9 @@ Description of Variables:
  
 - **R** (≥ 4.0)
 - Packages: `nlme`, `lme4`, `geepack`, `JMbayes2` or `GLMMadaptive`, `aod`, `multcomp`, `ggplot2`, `corrplot`
+- 
 Install all dependencies:
+
 ```r
 install.packages(c("nlme", "lme4", "geepack", "GLMMadaptive",
                    "aod", "multcomp", "ggplot2", "corrplot"))
