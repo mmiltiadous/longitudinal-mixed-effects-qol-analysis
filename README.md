@@ -70,10 +70,10 @@ Description of Variables:
  
 ## Structure
  
-- `QOL-3.csv` : raw data file (`QOL-3.csv`)
-- `Mixed_Models_analysis.rmd` : R Markdown source (`Mixed_Model_Group_Assignment.Rmd`)
-- `Mixed_Models_report.pdf` : compiled PDF report (`Mixed_Model_Group_Assignment.pdf`)
-- `QualityLife.pdf` : assignment instructions (`QualityLife.pdf`)
+- `QOL-3.csv` : raw data file 
+- `Mixed_Models_analysis.rmd` : R Markdown source 
+- `Mixed_Models_report.pdf` : compiled PDF report
+- `QualityLife.pdf` : assignment instructions 
 
 ## Requirements
  
