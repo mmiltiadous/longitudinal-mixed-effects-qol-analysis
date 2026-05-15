@@ -45,7 +45,7 @@ Description of Variables:
 - Random slope comparison via likelihood ratio test
 - Final model: `Score ~ Months * Treat + (1 | ID)`
 
-### Part 2 — Complaints (Binary Outcome)
+### Part 2: Complaints (Binary Outcome)
  
 **3. Generalized Estimating Equations (GEE)**
 - Marginal logistic regression, unstructured working correlation matrix
