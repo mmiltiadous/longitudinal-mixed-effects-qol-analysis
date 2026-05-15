@@ -1,6 +1,6 @@
 # Longitudinal Analysis of Adjuvant Chemotherapy Effects on Quality of Life
 This project analyses a simulated longitudinal dataset from a clinical trial investigating whether adjuvant chemotherapy improves quality of life (QoL) in rectal cancer patients after neoadjuvant chemoradiotherapy and curative resection.
-226 patients with histologically proven stage II or III rectal cancer were assigned to either adjuvant chemotherapy or observation. QoL was assessed via the EORTC-C30 questionnaire at 1, 3, 6, and 12 months post-surgery. All analyses were conducted in **R**.
+226 patients with histologically proven stage II or III rectal cancer were assigned to either adjuvant chemotherapy or observation. QoL was assessed via the EORTC-C30 questionnaire at 1, 3, 6, and 12 months post-surgery. All analyses were conducted in R.
 
 ## Research Questions
 
